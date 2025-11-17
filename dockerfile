@@ -18,6 +18,7 @@ WORKDIR /app
 
 # 빌더에서 만든 바이너리만 복사
 COPY --from=builder /build/kkomantl-server /app/kkomantl-server
+COPY --from=builder /build/data ./data
 
 EXPOSE 8080
 
