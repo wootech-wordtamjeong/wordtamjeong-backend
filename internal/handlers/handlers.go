@@ -13,15 +13,31 @@ import (
 
 // Handler manages HTTP requests
 type Handler struct {
-	quizService *services.QuizService
-	adminAPIKey string
+	quizService    *services.QuizService
+	adminAPIKey    string
+	allowedOrigins []string
 }
 
 // NewHandler creates a new handler
 func NewHandler(quizService *services.QuizService) *Handler {
+	// Get allowed origins from environment variable
+	originsEnv := os.Getenv("ALLOWED_ORIGINS")
+	var allowedOrigins []string
+	if originsEnv != "" {
+		allowedOrigins = strings.Split(originsEnv, ",")
+		// Trim spaces
+		for i, origin := range allowedOrigins {
+			allowedOrigins[i] = strings.TrimSpace(origin)
+		}
+	} else {
+		// Default to allow all if not specified
+		allowedOrigins = []string{"*"}
+	}
+
 	return &Handler{
-		quizService: quizService,
-		adminAPIKey: os.Getenv("ADMIN_API_KEY"),
+		quizService:    quizService,
+		adminAPIKey:    os.Getenv("ADMIN_API_KEY"),
+		allowedOrigins: allowedOrigins,
 	}
 }
 
@@ -132,7 +148,17 @@ func (h *Handler) HealthHandler(w http.ResponseWriter, r *http.Request) {
 // CORSMiddleware adds CORS headers
 func (h *Handler) CORSMiddleware(next http.HandlerFunc) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
-		w.Header().Set("Access-Control-Allow-Origin", "*")
+		origin := r.Header.Get("Origin")
+
+		// Check if origin is allowed
+		if h.isOriginAllowed(origin) {
+			w.Header().Set("Access-Control-Allow-Origin", origin)
+			w.Header().Set("Access-Control-Allow-Credentials", "true")
+		} else if len(h.allowedOrigins) == 1 && h.allowedOrigins[0] == "*" {
+			// Fallback to wildcard if configured
+			w.Header().Set("Access-Control-Allow-Origin", "*")
+		}
+
 		w.Header().Set("Access-Control-Allow-Methods", "GET, POST, OPTIONS")
 		w.Header().Set("Access-Control-Allow-Headers", "Content-Type, X-API-Key, Authorization")
 
@@ -143,6 +169,16 @@ func (h *Handler) CORSMiddleware(next http.HandlerFunc) http.HandlerFunc {
 
 		next(w, r)
 	}
+}
+
+// isOriginAllowed checks if the origin is in the allowed list
+func (h *Handler) isOriginAllowed(origin string) bool {
+	for _, allowed := range h.allowedOrigins {
+		if allowed == "*" || allowed == origin {
+			return true
+		}
+	}
+	return false
 }
 
 // jsonResponse sends a JSON response
