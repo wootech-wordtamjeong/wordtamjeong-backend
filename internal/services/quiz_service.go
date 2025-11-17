@@ -24,6 +24,8 @@ type QuizService struct {
 	topWords         []WordSimilarity
 	mu               sync.RWMutex
 	wordList         []string
+
+	loc *time.Location
 }
 
 // WordSimilarity represents a word and its similarity to the answer
@@ -40,6 +42,15 @@ func NewQuizService(embeddingService *bedrock.EmbeddingService) *QuizService {
 		wordList:         loadWordList(),
 	}
 
+	// 타임존 설정 (기본: Asia/Seoul, 실패하면 UTC)
+	loc, err := time.LoadLocation("Asia/Seoul")
+	if err != nil {
+		fmt.Printf("Failed to load Asia/Seoul location: %v, fallback to UTC\n", err)
+		qs.loc = time.UTC
+	} else {
+		qs.loc = loc
+	}
+
 	fmt.Printf("Loaded %d words from word list\n", len(qs.wordList))
 
 	// Initialize with today's quiz
@@ -50,6 +61,9 @@ func NewQuizService(embeddingService *bedrock.EmbeddingService) *QuizService {
 	} else {
 		fmt.Printf("Quiz initialized successfully! Answer: %s\n", qs.currentQuiz.Answer)
 	}
+
+	// 매일 자정(00:00, KST 기준)마다 자동으로 새 퀴즈 생성하는 스케줄러
+	qs.startDailyRotation()
 
 	return qs
 }
@@ -67,7 +81,7 @@ func (qs *QuizService) GetTop100Hint() float64 {
 	defer qs.mu.RUnlock()
 
 	if len(qs.topWords) >= 100 {
-		return qs.topWords[99].Similarity  // 100th word (0-indexed)
+		return qs.topWords[99].Similarity // 100th word (0-indexed)
 	}
 	return 0.0
 }
@@ -78,7 +92,7 @@ func (qs *QuizService) GetTop200Hint() float64 {
 	defer qs.mu.RUnlock()
 
 	if len(qs.topWords) >= 200 {
-		return qs.topWords[199].Similarity  // 200th word (0-indexed)
+		return qs.topWords[199].Similarity // 200th word (0-indexed)
 	}
 	return 0.0
 }
@@ -185,6 +199,8 @@ func (qs *QuizService) RotateQuiz(ctx context.Context, answer string) (*models.Q
 		answer = qs.selectRandomWord()
 	}
 
+	now := time.Now().In(qs.loc) // KST 기준 현재 시각
+
 	// Get embedding for the answer
 	answerEmbedding, err := qs.embeddingService.GetEmbedding(ctx, answer)
 	if err != nil {
@@ -193,11 +209,11 @@ func (qs *QuizService) RotateQuiz(ctx context.Context, answer string) (*models.Q
 
 	// Create new quiz
 	quiz := &models.Quiz{
-		ID:              int(time.Now().Unix()),
-		Date:            time.Now().Format("2006-01-02"),
+		ID:              int(now.Unix()),
+		Date:            now.Format("2006-01-02"),
 		Answer:          answer,
 		AnswerEmbedding: answerEmbedding,
-		CreatedAt:       time.Now(),
+		CreatedAt:       now,
 	}
 
 	// Calculate top similar words (prototype: store top 200)
@@ -224,7 +240,8 @@ func (qs *QuizService) RotateQuiz(ctx context.Context, answer string) (*models.Q
 
 // initializeTodayQuiz initializes the quiz for today
 func (qs *QuizService) initializeTodayQuiz() error {
-	today := time.Now().Format("2006-01-02")
+	now := time.Now().In(qs.loc)       // 타임존 반영
+	today := now.Format("2006-01-02")  // 날짜 문자열
 
 	// Try to load existing quiz for today
 	quiz, err := qs.loadQuiz(today)
@@ -251,6 +268,50 @@ func (qs *QuizService) initializeTodayQuiz() error {
 	// Create new quiz if not found
 	_, err = qs.RotateQuiz(context.Background(), "")
 	return err
+}
+
+// 매일 자정(Asia/Seoul 기준)에 자동으로 새 퀴즈를 만드는 스케줄러
+func (qs *QuizService) startDailyRotation() {
+	go func() {
+		for {
+			now := time.Now().In(qs.loc) // 현재 시간 (KST)
+
+			// 다음 자정(00:00) 계산 (KST 기준)
+			nextMidnight := time.Date(
+				now.Year(), now.Month(), now.Day()+1,
+				0, 0, 0, 0, qs.loc,
+			)
+			sleepDuration := nextMidnight.Sub(now)
+
+			fmt.Printf("[Scheduler] Sleeping until next midnight (KST): %s (in %v)\n",
+				nextMidnight.Format(time.RFC3339), sleepDuration)
+
+			time.Sleep(sleepDuration)
+
+			// 자정 도달 후, 오늘 날짜 기준으로 퀴즈가 최신인지 확인
+			now = time.Now().In(qs.loc)
+			today := now.Format("2006-01-02")
+
+			qs.mu.RLock()
+			var currentDate string
+			if qs.currentQuiz != nil {
+				currentDate = qs.currentQuiz.Date
+			}
+			qs.mu.RUnlock()
+
+			if currentDate == today {
+				fmt.Printf("[Scheduler] Midnight reached (KST), but quiz already up-to-date for %s\n", today)
+				continue
+			}
+
+			fmt.Printf("[Scheduler] Generating new daily quiz for %s (KST)...\n", today)
+			if _, err := qs.RotateQuiz(context.Background(), ""); err != nil {
+				fmt.Printf("[Scheduler] Failed to rotate quiz at midnight: %v\n", err)
+			} else {
+				fmt.Printf("[Scheduler] New daily quiz generated for %s (KST)\n", today)
+			}
+		}
+	}()
 }
 
 // calculateTopWords calculates top N most similar words to the answer
@@ -284,7 +345,7 @@ func (qs *QuizService) calculateTopWords(ctx context.Context, quiz *models.Quiz,
 
 		embedding, err := qs.embeddingService.GetEmbedding(ctx, word)
 		if err != nil {
-			fmt.Printf("❌ Error getting embedding for '%s': %v\n", word, err)
+			fmt.Printf("Error getting embedding for '%s': %v\n", word, err)
 			// Longer delay before continuing after error
 			time.Sleep(3 * time.Second)
 			continue
