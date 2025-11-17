@@ -36,3 +36,6 @@ Thumbs.db
 kkomantl-server
 bootstrap
 function.zip
+
+# data
+/data/topwords_*.json
