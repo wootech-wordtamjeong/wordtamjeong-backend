@@ -31,8 +31,10 @@ jobs:
   deploy:
     needs: test
     runs-on: ubuntu-latest
-    if: github.ref == 'refs/heads/main'
-
+    if: >
+      (github.event_name == 'push' && github.ref == 'refs/heads/master') ||
+      (github.event_name == 'pull_request' && github.base_ref == 'develop')
+      
     steps:
       - name: Checkout
         uses: actions/checkout@v4
