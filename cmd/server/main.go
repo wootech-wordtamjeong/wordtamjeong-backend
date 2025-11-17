@@ -14,6 +14,7 @@ import (
 	"github.com/yourusername/kkomantl/pkg/bedrock"
 )
 
+
 func main() {
 	// Load .env file
 	if err := godotenv.Load(); err != nil {
