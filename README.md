@@ -1,4 +1,4 @@
-# 꼬맨틀 백엔드
+# 워드탐정 백엔드
 
 한국어 의미 유사도 기반 단어 추측 게임의 백엔드 서버
 
@@ -29,12 +29,6 @@ backend/
 ## 설정
 
 ### 환경 변수
-
-`.env.example`을 복사하여 `.env` 파일을 생성:
-
-```bash
-cp .env.example .env
-```
 
 필수 환경 변수:
 - `AWS_REGION`: AWS 리전 (기본값: ap-northeast-2)
@@ -164,47 +158,12 @@ X-API-Key: your-admin-api-key
 - 100개 이상 언어 지원
 - 벡터 차원: 1024
 
-## 테스트
-
-```bash
-# 서버가 실행 중일 때
-
-# 상태 확인
-curl http://localhost:8080/health
-
-# 퀴즈 정보
-curl http://localhost:8080/api/status
-
-# 단어 추측
-curl -X POST http://localhost:8080/api/guess \
-  -H "Content-Type: application/json" \
-  -d '{"word":"사랑"}'
-
-# 퀴즈 갱신 (관리자)
-curl -X POST http://localhost:8080/admin/rotate \
-  -H "Content-Type: application/json" \
-  -H "X-API-Key: your-admin-api-key" \
-  -d '{"answer":"희망"}'
-```
-
 ## 주의사항
 
 1. **AWS 자격 증명**: 로컬에서는 AWS CLI 설정 또는 환경 변수 필요, EC2에서는 IAM 역할 사용
 2. **API 키**: `ADMIN_API_KEY`는 반드시 안전하게 관리
 3. **단어 목록**: 더 많은 단어를 추가할수록 게임이 풍부해집니다
 4. **캐싱**: top 1000 단어는 퀴즈 생성 시 미리 계산되어 `data/` 디렉토리에 저장됩니다
-
-## 문제 해결
-
-### AWS 자격 증명 오류
-```bash
-export AWS_ACCESS_KEY_ID=your-key
-export AWS_SECRET_ACCESS_KEY=your-secret
-export AWS_REGION=ap-northeast-2
-```
-
-### Bedrock 모델 액세스 오류
-AWS Console → Bedrock → Model access에서 모델 활성화 필요
 
 ## 라이선스
 
