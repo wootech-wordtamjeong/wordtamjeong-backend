@@ -1,80 +1,116 @@
-name: Go CI/CD with Docker & ECR & EC2
+name: Test, build, and deploy
 
 on:
-  push:
-    branches: [ "master", "develop" ]
   pull_request:
-    branches: [ "master", "develop" ]
+    branches: [master, develop]
+  push:
+    branches: [master, develop]
+
+permissions:
+  contents: read
 
 env:
-  AWS_REGION: ${{ secrets.AWS_REGION }}
-  ECR_REPOSITORY: ${{ secrets.ECR_REPOSITORY }}
+  AWS_REGION: ${{ vars.AWS_REGION || 'ap-northeast-2' }}
+  ECR_REPOSITORY: ${{ vars.ECR_REPOSITORY || 'wordtamjeong' }}
 
 jobs:
   test:
     runs-on: ubuntu-latest
     steps:
-      - name: Checkout
+      - name: Check out repository
         uses: actions/checkout@v4
 
       - name: Set up Go
         uses: actions/setup-go@v5
         with:
           go-version-file: go.mod
+          cache: true
 
-      - name: Download dependencies
-        run: go mod download
+      - name: Run vet
+        run: go vet ./...
 
       - name: Run tests
         run: go test ./...
 
   deploy:
     needs: test
+    if: github.event_name == 'push' && github.ref == 'refs/heads/master'
     runs-on: ubuntu-latest
-    if: >
-      (github.event_name == 'push' && github.ref == 'refs/heads/master') ||
-      (github.event_name == 'pull_request' && github.base_ref == 'develop')
-      
+    permissions:
+      contents: read
+      id-token: write
+
     steps:
-      - name: Checkout
+      - name: Check out repository
         uses: actions/checkout@v4
 
-      - name: Configure AWS credentials
+      - name: Configure AWS credentials with GitHub OIDC
         uses: aws-actions/configure-aws-credentials@v4
         with:
-          aws-access-key-id: ${{ secrets.AWS_ACCESS_KEY_ID }}
-          aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
+          role-to-assume: ${{ secrets.AWS_ROLE_ARN }}
           aws-region: ${{ env.AWS_REGION }}
 
-      - name: Login to Amazon ECR
+      - name: Log in to Amazon ECR
         id: login-ecr
         uses: aws-actions/amazon-ecr-login@v2
 
-      - name: Build, tag, and push Docker image
+      - name: Build and push image
         env:
           REGISTRY: ${{ steps.login-ecr.outputs.registry }}
         run: |
-          IMAGE_TAG=${GITHUB_SHA}
-          IMAGE_URI=$REGISTRY/${ECR_REPOSITORY}:${IMAGE_TAG}
-          IMAGE_URI_LATEST=$REGISTRY/${ECR_REPOSITORY}:latest
+          IMAGE_URI="$REGISTRY/$ECR_REPOSITORY:$GITHUB_SHA"
+          docker build --file dockerfile --tag "$IMAGE_URI" --tag "$REGISTRY/$ECR_REPOSITORY:latest" .
+          docker push "$IMAGE_URI"
+          docker push "$REGISTRY/$ECR_REPOSITORY:latest"
+          echo "IMAGE_URI=$IMAGE_URI" >> "$GITHUB_ENV"
 
-          echo "Building image: $IMAGE_URI"
+      - name: Install Ansible
+        run: |
+          sudo apt-get update
+          sudo apt-get install --yes ansible
 
-          docker build -t $IMAGE_URI .
-          docker tag $IMAGE_URI $IMAGE_URI_LATEST
+      - name: Temporarily allow this runner to use SSH
+        id: runner-ip
+        env:
+          SECURITY_GROUP_ID: ${{ vars.EC2_SECURITY_GROUP_ID }}
+        run: |
+          RUNNER_IP="$(curl --fail --silent --show-error https://checkip.amazonaws.com)"
+          echo "runner_ip=$RUNNER_IP" >> "$GITHUB_OUTPUT"
+          aws ec2 authorize-security-group-ingress \
+            --group-id "$SECURITY_GROUP_ID" \
+            --protocol tcp \
+            --port 22 \
+            --cidr "$RUNNER_IP/32"
 
-          docker push $IMAGE_URI
-          docker push $IMAGE_URI_LATEST
+      - name: Configure SSH
+        env:
+          EC2_HOST: ${{ secrets.EC2_HOST }}
+          EC2_SSH_KEY: ${{ secrets.EC2_SSH_KEY }}
+        run: |
+          install -d -m 700 "$HOME/.ssh"
+          printf '%s\n' "$EC2_SSH_KEY" > "$HOME/.ssh/wordtamjeong.pem"
+          chmod 600 "$HOME/.ssh/wordtamjeong.pem"
+          ssh-keyscan -H "$EC2_HOST" >> "$HOME/.ssh/known_hosts"
+          printf '[app]\nwordtamjeong ansible_host=%s ansible_user=ubuntu\n' "$EC2_HOST" > infra/ansible/inventory/hosts.ini
 
-      - name: Deploy to EC2 via SSH and docker-compose
-        uses: appleboy/ssh-action@v0.1.10
-        with:
-          host: ${{ secrets.EC2_HOST }}
-          username: ${{ secrets.EC2_USER }}
-          key: ${{ secrets.EC2_SSH_KEY }}
-          script: |
-            aws ecr get-login-password --region us-east-1 | docker login --username AWS --password-stdin 748325219682.dkr.ecr.us-east-1.amazonaws.com
-            cd /opt/kkomantl
-            docker compose pull
-            docker compose up -d
-            docker ps
+      - name: Deploy with Ansible
+        working-directory: infra/ansible
+        env:
+          AWS_REGION: ${{ env.AWS_REGION }}
+          AWS_BEDROCK_MODEL: ${{ vars.AWS_BEDROCK_MODEL || 'amazon.titan-embed-text-v2:0' }}
+          ADMIN_API_KEY: ${{ secrets.ADMIN_API_KEY }}
+          ALLOWED_ORIGINS: ${{ vars.ALLOWED_ORIGINS }}
+          ENABLE_INTERNAL_SCHEDULER: ${{ vars.ENABLE_INTERNAL_SCHEDULER || 'true' }}
+        run: ansible-playbook deploy.yml --private-key "$HOME/.ssh/wordtamjeong.pem"
+
+      - name: Remove temporary runner SSH access
+        if: always() && steps.runner-ip.outputs.runner_ip != ''
+        env:
+          SECURITY_GROUP_ID: ${{ vars.EC2_SECURITY_GROUP_ID }}
+          RUNNER_IP: ${{ steps.runner-ip.outputs.runner_ip }}
+        run: |
+          aws ec2 revoke-security-group-ingress \
+            --group-id "$SECURITY_GROUP_ID" \
+            --protocol tcp \
+            --port 22 \
+            --cidr "$RUNNER_IP/32"

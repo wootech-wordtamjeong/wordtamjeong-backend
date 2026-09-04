@@ -62,10 +62,31 @@ func NewQuizService(embeddingService *bedrock.EmbeddingService) *QuizService {
 		fmt.Printf("Quiz initialized successfully! Answer: %s\n", qs.currentQuiz.Answer)
 	}
 
-	// 매일 자정(00:00, KST 기준)마다 자동으로 새 퀴즈 생성하는 스케줄러
-	qs.startDailyRotation()
+	// EventBridge/Lambda가 순환을 담당할 때는 중복 실행을 막기 위해 비활성화할 수 있다.
+	if getEnvBool("ENABLE_INTERNAL_SCHEDULER", true) {
+		qs.startDailyRotation()
+	} else {
+		fmt.Println("[Scheduler] Internal daily rotation is disabled")
+	}
 
 	return qs
+}
+
+func getEnvBool(key string, defaultValue bool) bool {
+	value := strings.TrimSpace(strings.ToLower(os.Getenv(key)))
+	if value == "" {
+		return defaultValue
+	}
+
+	switch value {
+	case "1", "true", "yes", "on":
+		return true
+	case "0", "false", "no", "off":
+		return false
+	default:
+		fmt.Printf("Invalid boolean value for %s=%q; using default %t\n", key, value, defaultValue)
+		return defaultValue
+	}
 }
 
 // GetCurrentQuiz returns the current quiz
@@ -240,8 +261,8 @@ func (qs *QuizService) RotateQuiz(ctx context.Context, answer string) (*models.Q
 
 // initializeTodayQuiz initializes the quiz for today
 func (qs *QuizService) initializeTodayQuiz() error {
-	now := time.Now().In(qs.loc)       // 타임존 반영
-	today := now.Format("2006-01-02")  // 날짜 문자열
+	now := time.Now().In(qs.loc)      // 타임존 반영
+	today := now.Format("2006-01-02") // 날짜 문자열
 
 	// Try to load existing quiz for today
 	quiz, err := qs.loadQuiz(today)

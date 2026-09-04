@@ -1,0 +1,87 @@
+---
+- name: Validate deployment variables
+  ansible.builtin.assert:
+    that:
+      - app_image_uri | length > 0
+      - ecr_registry | length > 0
+      - app_admin_api_key | length >= 16
+      - app_allowed_origins | length > 0
+    fail_msg: >-
+      IMAGE_URI, ADMIN_API_KEY (at least 16 characters), and ALLOWED_ORIGINS
+      must be provided as controller environment variables.
+  no_log: true
+
+- name: Create application data directory
+  ansible.builtin.file:
+    path: "{{ app_directory }}/data"
+    state: directory
+    owner: ubuntu
+    group: ubuntu
+    mode: "0755"
+
+- name: Deploy the word list
+  ansible.builtin.copy:
+    src: "{{ playbook_dir }}/../../data/words.txt"
+    dest: "{{ app_directory }}/data/words.txt"
+    owner: ubuntu
+    group: ubuntu
+    mode: "0644"
+
+- name: Render application environment
+  ansible.builtin.template:
+    src: env.j2
+    dest: "{{ app_directory }}/.env"
+    owner: root
+    group: root
+    mode: "0600"
+  no_log: true
+
+- name: Render Docker Compose configuration
+  ansible.builtin.template:
+    src: compose.yaml.j2
+    dest: "{{ app_directory }}/compose.yaml"
+    owner: root
+    group: root
+    mode: "0644"
+
+- name: Log in to Amazon ECR using the EC2 instance role
+  ansible.builtin.shell: >-
+    set -o pipefail &&
+    aws ecr get-login-password --region {{ app_aws_region | quote }} |
+    docker login --username AWS --password-stdin {{ ecr_registry | quote }}
+  args:
+    executable: /bin/bash
+  changed_when: false
+  no_log: true
+
+- name: Pull the requested image
+  ansible.builtin.command:
+    cmd: docker compose pull
+    chdir: "{{ app_directory }}"
+  register: compose_pull
+  changed_when: "'Pulled' in compose_pull.stdout or 'Downloaded' in compose_pull.stderr"
+
+- name: Recreate the application container
+  ansible.builtin.command:
+    cmd: docker compose up -d --remove-orphans
+    chdir: "{{ app_directory }}"
+  register: compose_up
+  changed_when: >-
+    'Started' in compose_up.stdout or
+    'Created' in compose_up.stdout or
+    'Recreated' in compose_up.stdout
+
+- name: Wait for the health endpoint
+  ansible.builtin.uri:
+    url: http://127.0.0.1:8080/health
+    method: GET
+    status_code: 200
+    return_content: true
+  register: health_response
+  until:
+    - health_response.status == 200
+    - health_response.json.status == 'ok'
+  # A cache miss calculates embeddings for the entire word list before the
+  # HTTP listener starts, so the first deployment can take several minutes.
+  retries: 180
+  delay: 5

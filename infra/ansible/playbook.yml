@@ -1,0 +1,12 @@
+---
+- name: Configure and deploy Wordtamjeong
+  hosts: app
+  become: true
+
+  roles:
+    - role: common
+      tags: [bootstrap]
+    - role: docker
+      tags: [bootstrap]
+    - role: app
+      tags: [deploy]

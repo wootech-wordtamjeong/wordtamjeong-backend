@@ -1,0 +1,13 @@
+aws_region            = "ap-northeast-2"
+environment           = "dev"
+admin_cidr            = "203.0.113.10/32"
+api_allowed_cidrs     = ["0.0.0.0/0"]
+instance_type         = "t3.micro"
+ssh_key_name          = "replace-with-existing-key-pair"
+ecr_repository_name   = "wordtamjeong"
+github_repository     = "kimjuho1559/wordtamjeong-backend"
+# Set this only after creating the account-level GitHub OIDC provider.
+# github_oidc_provider_arn = "arn:aws:iam::000000000000:oidc-provider/token.actions.githubusercontent.com"
+bedrock_model_arns = [
+  "arn:aws:bedrock:ap-northeast-2::foundation-model/amazon.titan-embed-text-v2:0",
+]

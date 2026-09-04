@@ -1,0 +1,9 @@
+---
+app_directory: /opt/kkomantl
+app_image_uri: "{{ lookup('env', 'IMAGE_URI') }}"
+app_aws_region: "{{ lookup('env', 'AWS_REGION') | default('ap-northeast-2', true) }}"
+app_bedrock_model: "{{ lookup('env', 'AWS_BEDROCK_MODEL') | default('amazon.titan-embed-text-v2:0', true) }}"
+app_admin_api_key: "{{ lookup('env', 'ADMIN_API_KEY') }}"
+app_allowed_origins: "{{ lookup('env', 'ALLOWED_ORIGINS') }}"
+app_internal_scheduler: "{{ lookup('env', 'ENABLE_INTERNAL_SCHEDULER') | default('true', true) }}"
+ecr_registry: "{{ app_image_uri.split('/')[0] if '/' in app_image_uri else '' }}"
