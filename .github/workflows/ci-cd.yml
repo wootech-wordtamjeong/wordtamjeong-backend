@@ -2,9 +2,9 @@ name: Test, build, and deploy
 
 on:
   pull_request:
-    branches: [master, develop]
+    branches: [develop]
   push:
-    branches: [master, develop]
+    branches: [develop]
 
 permissions:
   contents: read
@@ -34,7 +34,7 @@ jobs:
 
   deploy:
     needs: test
-    if: github.event_name == 'push' && github.ref == 'refs/heads/master'
+    if: github.event_name == 'push' && github.ref == 'refs/heads/develop'
     runs-on: ubuntu-latest
     permissions:
       contents: read
