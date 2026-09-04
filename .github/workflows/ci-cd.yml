@@ -34,7 +34,10 @@ jobs:
 
   deploy:
     needs: test
-    if: github.event_name == 'push' && github.ref == 'refs/heads/develop'
+    if: >-
+      github.event_name == 'push' &&
+      github.ref == 'refs/heads/develop' &&
+      github.repository == 'wootech-wordtamjeong/wordtamjeong-backend'
     runs-on: ubuntu-latest
     permissions:
       contents: read
