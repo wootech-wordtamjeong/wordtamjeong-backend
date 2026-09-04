@@ -1,0 +1,8 @@
+---
+- name: Bootstrap Wordtamjeong servers
+  hosts: app
+  become: true
+
+  roles:
+    - common
+    - docker

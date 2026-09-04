@@ -19,7 +19,18 @@ go.work
 
 # Environment files
 .env
-.env.example
+
+# Terraform local state and generated plans
+**/.terraform/*
+*.tfstate
+*.tfstate.*
+*.tfplan
+*.tfvars
+!*.tfvars.example
+
+# Ansible runtime files
+*.retry
+infra/ansible/inventory/hosts.ini
 
 # IDE
 .vscode/

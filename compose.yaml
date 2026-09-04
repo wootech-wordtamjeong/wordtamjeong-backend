@@ -1,0 +1,11 @@
+services:
+  backend:
+    image: ${IMAGE_URI:?IMAGE_URI must be set}
+    container_name: wordtamjeong-backend
+    restart: unless-stopped
+    env_file:
+      - .env
+    ports:
+      - "8080:8080"
+    volumes:
+      - ./data:/app/data

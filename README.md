@@ -71,6 +71,12 @@ GOOS=linux GOARCH=amd64 go build -o bootstrap main.go
 zip function.zip bootstrap
 ```
 
+## AWS 인프라 및 배포
+
+Terraform, Ansible, GitHub Actions를 이용한 AWS 배포 파일은 `infra/`에 있습니다.
+새 환경을 만드는 순서와 필요한 AWS/GitHub 설정은
+[`infra/README.md`](infra/README.md)를 참고하세요.
+
 ## API 엔드포인트
 
 ### GET /health
