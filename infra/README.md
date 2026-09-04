@@ -68,7 +68,7 @@ terraform output
 ## 3. GitHub OIDC 설정
 
 AWS 계정에 `token.actions.githubusercontent.com` OIDC provider가 이미 있다면 그
-ARN을 `github_oidc_provider_arn`에 설정하십시오. Terraform이 master 브랜치만
+ARN을 `github_oidc_provider_arn`에 설정하십시오. Terraform이 develop 브랜치만
 역할을 맡을 수 있는 ECR push 역할을 생성합니다.
 
 OIDC provider는 AWS 계정당 공유하는 리소스라 이 프로젝트에서 무조건 생성하지
@@ -151,7 +151,7 @@ ENABLE_INTERNAL_SCHEDULER  true
 EC2_SECURITY_GROUP_ID       terraform output security_group_id
 ```
 
-워크플로는 PR과 develop push에서는 테스트만 실행합니다. master push에 한해서
+워크플로는 develop 대상 PR에서는 테스트만 실행합니다. develop push에 한해서
 OIDC로 AWS 역할을 맡고, 커밋 SHA 이미지를 ECR에 올린 후 Ansible로 배포합니다.
 배포 직전에는 해당 GitHub 러너의 IP에만 SSH를 허용하고, 배포 성공 여부와 관계없이
 마지막 단계에서 그 규칙을 제거합니다.
