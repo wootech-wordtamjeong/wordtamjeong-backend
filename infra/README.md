@@ -68,8 +68,9 @@ terraform output
 ## 3. GitHub OIDC 설정
 
 AWS 계정에 `token.actions.githubusercontent.com` OIDC provider가 이미 있다면 그
-ARN을 `github_oidc_provider_arn`에 설정하십시오. Terraform이 develop 브랜치만
-역할을 맡을 수 있는 ECR push 역할을 생성합니다.
+ARN을 `github_oidc_provider_arn`에 설정하십시오. Terraform이 조직 저장소의
+develop 브랜치만 역할을 맡을 수 있는 ECR push 역할을 생성합니다. 개인 fork의
+develop push에서는 테스트만 실행되고 배포 job은 건너뜁니다.
 
 OIDC provider는 AWS 계정당 공유하는 리소스라 이 프로젝트에서 무조건 생성하지
 않습니다. 없는 계정에서는 IAM의 Identity providers에서 다음 값으로 한 번만
@@ -130,6 +131,10 @@ health check가 수 분 걸릴 수 있습니다.
 ## 6. GitHub 설정
 
 Repository settings에서 다음 값을 등록합니다.
+
+Fork에서 PR을 보내 조직 저장소에서 배포하는 경우, 아래 Secrets와 Variables는
+개인 fork가 아니라 `wootech-wordtamjeong/wordtamjeong-backend` 조직 저장소에
+등록해야 합니다. Fork의 Actions 설정은 조직 저장소로 전달되지 않습니다.
 
 Actions secrets:
 

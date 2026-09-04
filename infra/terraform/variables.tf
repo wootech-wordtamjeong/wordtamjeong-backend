@@ -74,7 +74,7 @@ variable "ecr_repository_name" {
 variable "github_repository" {
   description = "GitHub repository allowed to assume the deployment role."
   type        = string
-  default     = "kimjuho1559/wordtamjeong-backend"
+  default     = "wootech-wordtamjeong/wordtamjeong-backend"
 }
 
 variable "github_oidc_provider_arn" {
